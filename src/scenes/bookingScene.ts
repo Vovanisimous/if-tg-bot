@@ -52,7 +52,12 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
             [Markup.button.callback('Отменить бронь', `cancel_booking:${data.id}`)],
           ]),
         );
-        return;
+        // Добавляем кнопку для возврата в главное меню
+        await ctx.reply(
+          'Для создания новой брони сначала отмените текущую или вернитесь в главное меню.',
+          Markup.keyboard([[BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES]]).resize(),
+        );
+        return ctx.scene.leave();
       }
     }
     const dates = getNextBookingDates();
@@ -222,6 +227,10 @@ bookingScene.action(/cancel_booking:(\d+)/, async (ctx) => {
   await supabase.from('bookings').update({ status: 'canceled' }).eq('id', bookingId);
   await ctx.editMessageReplyMarkup(undefined); // remove inline keyboard
   await ctx.reply('Бронь отменена');
+  await ctx.reply(
+    'Теперь вы можете создать новую бронь или выбрать другие опции.',
+    Markup.keyboard([[BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES]]).resize(),
+  );
   return ctx.scene.leave();
 });
 
