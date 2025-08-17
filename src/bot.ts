@@ -26,7 +26,24 @@ server.listen(PORT, () => {
   console.log(`HTTP server running on port ${PORT}`);
 });
 
-bot.launch();
+// Function to start bot with retry logic
+async function startBot() {
+  try {
+    await bot.launch();
+    console.log('Bot started successfully!');
+  } catch (error: any) {
+    if (error.response?.error_code === 409) {
+      console.log('Bot conflict detected. Waiting 5 seconds before retry...');
+      setTimeout(startBot, 5000);
+    } else {
+      console.error('Bot startup error:', error);
+      process.exit(1);
+    }
+  }
+}
+
+// Start the bot
+startBot();
 
 process.once('SIGINT', () => {
   bot.stop('SIGINT');
