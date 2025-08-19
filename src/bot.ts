@@ -3,7 +3,7 @@ import { bot, BotContext } from './botInstance';
 import { Scenes, session } from 'telegraf';
 import bookingScene from './scenes/bookingScene';
 import menuScene from './scenes/menuScene';
-import express from 'express';
+import http from 'http';
 
 const stage = new Scenes.Stage<BotContext>([bookingScene, menuScene]);
 bot.use(session());
@@ -15,42 +15,21 @@ import './commands/rules';
 import './commands/menu';
 import './commands/booking';
 
-// Express app for webhook
-const app = express();
-app.use(express.json());
-
-// Health check endpoint
-app.get('/', (req: express.Request, res: express.Response) => {
-  res.send('Bot is running!');
-});
-
-// Webhook endpoint
-app.post('/webhook', (req: express.Request, res: express.Response) => {
-  bot.handleUpdate(req.body);
-  res.sendStatus(200);
+// Simple HTTP server for health check
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot is running!');
 });
 
 const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`HTTP server running on port ${PORT}`);
+});
 
-// Start server and bot
+// Function to start bot with retry logic
 async function startBot() {
   try {
-    // Start Express server
-    app.listen(PORT, () => {
-      console.log(`HTTP server running on port ${PORT}`);
-    });
-
-    // Set webhook for production
-    if (process.env.NODE_ENV === 'production') {
-      const webhookUrl = `https://if-tg-bot.onrender.com/webhook`;
-      await bot.telegram.setWebhook(webhookUrl);
-      console.log(`Webhook set to: ${webhookUrl}`);
-    } else {
-      // Use polling for development
-      await bot.launch();
-      console.log('Bot started with polling (development mode)');
-    }
-    
+    await bot.launch();
     console.log('Bot started successfully!');
   } catch (error: any) {
     if (error.response?.error_code === 409) {
@@ -68,7 +47,9 @@ startBot();
 
 process.once('SIGINT', () => {
   bot.stop('SIGINT');
+  server.close();
 });
 process.once('SIGTERM', () => {
   bot.stop('SIGTERM');
+  server.close();
 });
