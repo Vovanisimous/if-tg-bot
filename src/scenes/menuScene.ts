@@ -7,12 +7,16 @@ import { BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES } from '../constants';
 const KITCHEN = 'Кухня';
 const BAR = 'Бар';
 const BACK = 'Назад';
+const BAR_SPECIAL = 'Special';
+const BAR_MAIN = 'Основное';
+const BAR_CLASSIC = 'Классика';
 
 async function sendImages(
   ctx: BotContext,
   directory: string,
   notFoundText: string,
   doneText: string,
+  keyboardButtons?: string[][],
 ) {
   let files: string[] = [];
   try {
@@ -50,7 +54,7 @@ async function sendImages(
 
   await ctx.reply(
     doneText,
-    Markup.keyboard([[KITCHEN, BAR], [BACK]])
+    Markup.keyboard(keyboardButtons ?? [[KITCHEN, BAR], [BACK]])
       .resize()
       .oneTime(),
   );
@@ -68,12 +72,39 @@ async function handleMenuSelection(ctx: BotContext) {
         'Фото кухни. Для возврата выберите другой раздел или нажмите "Назад".',
       );
     } else if (text === BAR) {
-      const barDir = path.join(__dirname, '../../assets/bar');
+      await ctx.reply(
+        'Выберите раздел бара:',
+        Markup.keyboard([[BAR_SPECIAL, BAR_MAIN, BAR_CLASSIC], [BACK]])
+          .resize()
+          .oneTime(),
+      );
+      return;
+    } else if (text === BAR_SPECIAL) {
+      const dir = path.join(__dirname, '../../assets/bar/special');
       await sendImages(
         ctx,
-        barDir,
-        'Фотографии бара не найдены.',
-        'Фото бара. Для возврата выберите другой раздел или нажмите "Назад".',
+        dir,
+        'Фотографии раздела Special не найдены.',
+        'Special. Для возврата выберите другой раздел или нажмите "Назад".',
+        [[BAR_SPECIAL, BAR_MAIN, BAR_CLASSIC], [BACK]],
+      );
+    } else if (text === BAR_MAIN) {
+      const dir = path.join(__dirname, '../../assets/bar/main');
+      await sendImages(
+        ctx,
+        dir,
+        'Фотографии раздела Основное не найдены.',
+        'Основное. Для возврата выберите другой раздел или нажмите "Назад".',
+        [[BAR_SPECIAL, BAR_MAIN, BAR_CLASSIC], [BACK]],
+      );
+    } else if (text === BAR_CLASSIC) {
+      const dir = path.join(__dirname, '../../assets/bar/classic');
+      await sendImages(
+        ctx,
+        dir,
+        'Фотографии раздела Классика не найдены.',
+        'Классика. Для возврата выберите другой раздел или нажмите "Назад".',
+        [[BAR_SPECIAL, BAR_MAIN, BAR_CLASSIC], [BACK]],
       );
     } else if (text === BACK) {
       // Если мы находимся на первом шаге (выбор меню) — выходим в главное меню

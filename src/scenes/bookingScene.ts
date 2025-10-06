@@ -57,7 +57,7 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
           'Для создания новой брони сначала отмените текущую или вернитесь в главное меню.',
           Markup.keyboard([[BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES]]).resize(),
         );
-        return ctx.scene.leave();
+        return;
       }
     }
     const dates = getNextBookingDates();
@@ -224,14 +224,21 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
 
 // Handle cancel booking callback
 bookingScene.action(/cancel_booking:(\d+)/, async (ctx) => {
-  const bookingId = ctx.match[1];
-  await supabase.from('bookings').update({ status: 'canceled' }).eq('id', bookingId);
-  await ctx.editMessageReplyMarkup(undefined); // remove inline keyboard
-  await ctx.reply('Бронь отменена');
-  await ctx.reply(
-    'Теперь вы можете создать новую бронь или выбрать другие опции.',
-    Markup.keyboard([[BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES]]).resize(),
-  );
+  await ctx.answerCbQuery();
+  const bookingIdParam = ctx.match[1];
+  const bookingId = Number(bookingIdParam);
+  try {
+    await supabase.from('bookings').update({ status: 'canceled' }).eq('id', bookingId);
+    await ctx.editMessageReplyMarkup(undefined);
+    await ctx.reply('Бронь отменена');
+    await ctx.reply(
+      'Теперь вы можете создать новую бронь или выбрать другие опции.',
+      Markup.keyboard([[BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES]]).resize(),
+    );
+  } catch (error) {
+    console.error('Failed to cancel booking', { bookingId, error });
+    await ctx.reply('Не удалось отменить бронь. Пожалуйста, попробуйте позже.');
+  }
   return ctx.scene.leave();
 });
 
