@@ -31,10 +31,15 @@ async function sendImages(
   for (const file of files) {
     const filePath = path.join(directory, file);
     try {
-      await ctx.replyWithPhoto({ source: fs.createReadStream(filePath) });
-    } catch {
+      // Use path string so Telegram preserves filename and image type
+      await ctx.replyWithPhoto({ source: filePath });
+    } catch (err) {
       try {
-        await ctx.replyWithDocument({ source: fs.createReadStream(filePath) });
+        // Fallback as document with explicit filename
+        await ctx.replyWithDocument({
+          source: fs.createReadStream(filePath),
+          filename: path.basename(filePath),
+        });
       } catch {}
     }
     await new Promise((r) => setTimeout(r, 200));
