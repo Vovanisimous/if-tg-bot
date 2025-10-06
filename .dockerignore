@@ -6,7 +6,6 @@ docker-compose*
 .gitignore
 .env
 .env.*
-**/*.ts
 !dist/
 !assets/
 **/.DS_Store
