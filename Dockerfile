@@ -12,8 +12,8 @@ RUN npm ci
 # Copy the rest of the project
 COPY . .
 
-# Build TypeScript and copy assets to dist
-RUN npm run build && cp -r assets dist/
+# Build TypeScript (postbuild in package.json may also copy assets to dist)
+RUN npm run build
 
 ############################################
 # Runner stage: small image with prod deps  #
@@ -28,6 +28,9 @@ RUN npm ci --omit=dev
 
 # Copy built app from builder
 COPY --from=builder /app/dist ./dist
+
+# Copy raw assets to project root so runtime paths like ../../assets work
+COPY --from=builder /app/assets ./assets
 
 # Expose port for health endpoint (optional for polling)
 EXPOSE 3000
