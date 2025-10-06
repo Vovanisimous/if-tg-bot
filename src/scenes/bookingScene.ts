@@ -192,8 +192,9 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
           },
         ]);
       }
+      const nameSuffix = ctx.from?.first_name ? `, ${ctx.from.first_name}` : '';
       await ctx.reply(
-        `Спасибо! Ваше место забронировано на ${date} в ${time} для ${guests} гостей. Номер телефона: ${formattedPhone}.
+        `Спасибо${nameSuffix}! Ваше место забронировано на ${date} в ${time} для ${guests} гостей. Номер телефона: ${formattedPhone}.
 
 Наш бар спрятан по адресу: Бульвар Чавайна, 36.
 Вход во двор с улицы Советская или со стороны Бульвара Чавайна. Ваш ориентир — красный козырёк Nami Izakaya.

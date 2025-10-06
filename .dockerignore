@@ -1,5 +1,17 @@
 node_modules
 npm-debug.log
+Dockerfile*
+docker-compose*
+.git
+.gitignore
+.env
+.env.*
+**/*.ts
+!dist/
+!assets/
+**/.DS_Store
+node_modules
+npm-debug.log
 .git
 .gitignore
 README.md

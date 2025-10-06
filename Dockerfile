@@ -1,29 +1,36 @@
-# Use Node.js 18 Alpine for smaller image size
-FROM node:18-alpine
+############################################
+# Builder stage: install dev deps and build #
+############################################
+FROM node:18-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
+# Install dependencies (including dev) using lockfile for reproducibility
 COPY package*.json ./
+RUN npm ci
 
-# Install dependencies
-RUN npm ci --only=production
-
-# Copy source code
+# Copy the rest of the project
 COPY . .
 
-# Build TypeScript
-RUN npm run build
+# Build TypeScript and copy assets to dist
+RUN npm run build && cp -r assets dist/
 
-# Copy assets to dist folder
-RUN cp -r assets dist/
+############################################
+# Runner stage: small image with prod deps  #
+############################################
+FROM node:18-alpine AS runner
 
-# Set working directory to dist
-WORKDIR /app/dist
+WORKDIR /app
 
-# Expose port (if needed for webhooks)
+# Only production dependencies
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Copy built app from builder
+COPY --from=builder /app/dist ./dist
+
+# Expose port for health endpoint (optional for polling)
 EXPOSE 3000
 
 # Start the bot
-CMD ["node", "bot.js"]
+CMD ["node", "dist/bot.js"]
