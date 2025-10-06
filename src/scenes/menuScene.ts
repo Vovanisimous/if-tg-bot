@@ -8,71 +8,68 @@ const KITCHEN = 'Кухня';
 const BAR = 'Бар';
 const BACK = 'Назад';
 
+async function sendImages(
+  ctx: BotContext,
+  directory: string,
+  notFoundText: string,
+  doneText: string,
+) {
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(directory).filter((f) => /\.(jpg|jpeg|png)$/i.test(f));
+  } catch {
+    await ctx.reply(notFoundText);
+    return;
+  }
+
+  if (files.length === 0) {
+    await ctx.reply(notFoundText);
+    return;
+  }
+
+  const loaderMsg = await ctx.reply('Загружаю фотографии...');
+  for (const file of files) {
+    const filePath = path.join(directory, file);
+    try {
+      await ctx.replyWithPhoto({ source: fs.createReadStream(filePath) });
+    } catch {
+      try {
+        await ctx.replyWithDocument({ source: fs.createReadStream(filePath) });
+      } catch {}
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  try {
+    await ctx.deleteMessage(loaderMsg.message_id);
+  } catch {}
+
+  await ctx.reply(
+    doneText,
+    Markup.keyboard([[KITCHEN, BAR], [BACK]])
+      .resize()
+      .oneTime(),
+  );
+}
+
 async function handleMenuSelection(ctx: BotContext) {
   if (ctx.message && 'text' in ctx.message) {
     const text = ctx.message.text;
     if (text === KITCHEN) {
       const kitchenDir = path.join(__dirname, '../../assets/kitchen');
-      let files: string[] = [];
-      try {
-        files = fs.readdirSync(kitchenDir).filter((f) => /\.(jpg|jpeg|png)$/i.test(f));
-      } catch (e) {
-        await ctx.reply('Фотографии кухни не найдены.');
-        return;
-      }
-      if (files.length > 0) {
-        const loaderMsg = await ctx.reply('Загружаю фотографии...');
-        for (const file of files) {
-          await ctx.replyWithPhoto({ source: path.join(kitchenDir, file) });
-        }
-        try {
-          await ctx.deleteMessage(loaderMsg.message_id);
-        } catch (e) {}
-        await ctx.reply(
-          'Фото кухни. Для возврата выберите другой раздел или нажмите "Назад".',
-          Markup.keyboard([[KITCHEN, BAR], [BACK]])
-            .resize()
-            .oneTime(),
-        );
-      } else {
-        await ctx.reply(
-          'Фотографии кухни не найдены.',
-          Markup.keyboard([[KITCHEN, BAR], [BACK]])
-            .resize()
-            .oneTime(),
-        );
-      }
+      await sendImages(
+        ctx,
+        kitchenDir,
+        'Фотографии кухни не найдены.',
+        'Фото кухни. Для возврата выберите другой раздел или нажмите "Назад".',
+      );
     } else if (text === BAR) {
       const barDir = path.join(__dirname, '../../assets/bar');
-      let files: string[] = [];
-      try {
-        files = fs.readdirSync(barDir).filter((f) => /\.(jpg|jpeg|png)$/i.test(f));
-      } catch (e) {
-        await ctx.reply('Фотографии бара не найдены.');
-        return;
-      }
-      if (files.length > 0) {
-        const loaderMsg = await ctx.reply('Загружаю фотографии...');
-        for (const file of files) {
-          await ctx.replyWithPhoto({ source: path.join(barDir, file) });
-        }
-        try {
-          await ctx.deleteMessage(loaderMsg.message_id);
-        } catch (e) {}
-        await ctx.reply(
-          'Фото бара. Для возврата выберите другой раздел или нажмите "Назад".',
-          Markup.keyboard([[KITCHEN, BAR], [BACK]])
-            .resize()
-            .oneTime(),
-        );
-      } else {
-        await ctx.reply(
-          'Фотографии бара не найдены.',
-          Markup.keyboard([[KITCHEN, BAR], [BACK]])
-            .resize()
-            .oneTime(),
-        );
-      }
+      await sendImages(
+        ctx,
+        barDir,
+        'Фотографии бара не найдены.',
+        'Фото бара. Для возврата выберите другой раздел или нажмите "Назад".',
+      );
     } else if (text === BACK) {
       // Если мы находимся на первом шаге (выбор меню) — выходим в главное меню
       if (ctx.wizard.cursor === 1) {
