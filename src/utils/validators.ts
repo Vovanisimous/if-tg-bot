@@ -22,3 +22,12 @@ export function formatRussianPhoneNumber(phone: string): string {
   // fallback: return original
   return phone;
 }
+
+export function isValidRussianHumanName(name: string): boolean {
+  if (!name) return false;
+  const trimmed = name.trim();
+  // Accept 2..40 Cyrillic letters (including ё/Ё), allow single space or hyphen between parts
+  if (trimmed.length < 2 || trimmed.length > 40) return false;
+  const pattern = /^(?=.{2,40}$)[А-Яа-яЁё]+(?:[ -][А-Яа-яЁё]+)*$/u;
+  return pattern.test(trimmed);
+}

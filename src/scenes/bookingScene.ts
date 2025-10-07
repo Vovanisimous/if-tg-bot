@@ -2,7 +2,11 @@ import { Scenes, Markup } from 'telegraf';
 import type { BotContext } from '../botInstance';
 import { BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES } from '../constants';
 import { getNextBookingDates, getBookingTimes, combineDateAndTimeToISO } from '../utils/date';
-import { isValidRussianPhoneNumber, formatRussianPhoneNumber } from '../utils/validators';
+import {
+  isValidRussianPhoneNumber,
+  formatRussianPhoneNumber,
+  isValidRussianHumanName,
+} from '../utils/validators';
 import { supabase } from '../supabaseClient';
 
 const CANCEL_BOOKING = 'Отменить бронирование';
@@ -179,8 +183,48 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
     if (phone && isValidRussianPhoneNumber(phone)) {
       const formattedPhone = formatRussianPhoneNumber(phone);
       (ctx.wizard.state as any).phone = formattedPhone;
+      await ctx.reply(
+        'Как к вам обращаться? Введите ваше имя кириллицей (2–40 символов).',
+        Markup.keyboard([[CANCEL_BOOKING]])
+          .resize()
+          .oneTime(),
+      );
+      return ctx.wizard.next();
+    } else {
+      await ctx.reply(
+        'Неправильно набран номер телефона попробуйте еще раз',
+        Markup.keyboard([
+          [Markup.button.contactRequest('Отправить номер телефона')],
+          [CANCEL_BOOKING],
+        ])
+          .resize()
+          .oneTime(),
+      );
+    }
+  },
+  // Step 6: Ask for real name and finalize
+  async (ctx) => {
+    if (isCancel(ctx)) {
+      return cancelBooking(ctx);
+    }
+    if (ctx.message && 'text' in ctx.message) {
+      const enteredName = ctx.message.text.trim();
+      if (!isValidRussianHumanName(enteredName)) {
+        await ctx.reply(
+          'Пожалуйста, введите корректное имя кириллицей (2–40 символов).',
+          Markup.keyboard([[CANCEL_BOOKING]])
+            .resize()
+            .oneTime(),
+        );
+        return; // stay on the same step
+      }
+      (ctx.wizard.state as any).real_name = enteredName;
+      // Persist real_name to visitors
+      if (ctx.from?.id) {
+        await supabase.from('visitors').update({ real_name: enteredName }).eq('id', ctx.from.id);
+      }
       // Save booking to DB
-      const { date, time, guests } = ctx.wizard.state as any;
+      const { date, time, guests, phone } = ctx.wizard.state as any;
       const bookingDate = combineDateAndTimeToISO(date, time);
       if (ctx.from) {
         await supabase.from('bookings').insert([
@@ -188,13 +232,13 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
             userid: ctx.from.id,
             date: bookingDate,
             visitors_count: Number(guests),
-            phone: formattedPhone,
+            phone,
           },
         ]);
       }
-      const nameSuffix = ctx.from?.first_name ? `, ${ctx.from.first_name}` : '';
+      const nameSuffix = enteredName ? `, ${enteredName}` : '';
       await ctx.reply(
-        `Спасибо${nameSuffix}! Ваше место забронировано на ${date} в ${time} для ${guests} гостей. Номер телефона: ${formattedPhone}.
+        `Спасибо${nameSuffix}! Ваше место забронировано на ${date} в ${time} для ${guests} гостей. Номер телефона: ${phone}.
 
 Наш бар спрятан по адресу: Бульвар Чавайна, 36.
 Вход во двор с улицы Советская или со стороны Бульвара Чавайна. Ваш ориентир — красный козырёк Nami Izakaya.
@@ -210,11 +254,8 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
       return ctx.scene.leave();
     } else {
       await ctx.reply(
-        'Неправильно набран номер телефона попробуйте еще раз',
-        Markup.keyboard([
-          [Markup.button.contactRequest('Отправить номер телефона')],
-          [CANCEL_BOOKING],
-        ])
+        'Пожалуйста, отправьте текстовое имя кириллицей.',
+        Markup.keyboard([[CANCEL_BOOKING]])
           .resize()
           .oneTime(),
       );

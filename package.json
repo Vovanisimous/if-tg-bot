@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn src/bot.ts",
+    "dev": "ts-node-dev src/bot.ts",
     "start": "node dist/bot.js",
     "build": "tsc",
     "prettier": "prettier --write .",
