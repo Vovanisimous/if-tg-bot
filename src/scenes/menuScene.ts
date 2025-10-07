@@ -9,7 +9,6 @@ const BAR = 'Бар';
 const BACK = 'Назад';
 const BAR_SPECIAL = 'Special';
 const BAR_MAIN = 'Основное';
-const BAR_CLASSIC = 'Классика';
 
 async function sendImages(
   ctx: BotContext,
@@ -32,21 +31,34 @@ async function sendImages(
   }
 
   const loaderMsg = await ctx.reply('Загружаю фотографии...');
-  for (const file of files) {
-    const filePath = path.join(directory, file);
+  const chunkSize = 10; // Telegram album limit
+  for (let i = 0; i < files.length; i += chunkSize) {
+    const batch = files.slice(i, i + chunkSize);
+    const mediaGroup = batch.map((file) => {
+      const filePath = path.join(directory, file);
+      return { type: 'photo' as const, media: { source: filePath } };
+    });
+
     try {
-      // Use path string so Telegram preserves filename and image type
-      await ctx.replyWithPhoto({ source: filePath });
-    } catch (err) {
-      try {
-        // Fallback as document with explicit filename
-        await ctx.replyWithDocument({
-          source: fs.createReadStream(filePath),
-          filename: path.basename(filePath),
-        });
-      } catch {}
+      await ctx.replyWithMediaGroup(mediaGroup);
+    } catch {
+      // Fallback to single sends for this batch if album sending fails
+      for (const file of batch) {
+        const filePath = path.join(directory, file);
+        try {
+          await ctx.replyWithPhoto({ source: filePath });
+        } catch {
+          try {
+            await ctx.replyWithDocument({
+              source: fs.createReadStream(filePath),
+              filename: path.basename(filePath),
+            });
+          } catch {}
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 300));
   }
   try {
     await ctx.deleteMessage(loaderMsg.message_id);
@@ -74,7 +86,7 @@ async function handleMenuSelection(ctx: BotContext) {
     } else if (text === BAR) {
       await ctx.reply(
         'Выберите раздел бара:',
-        Markup.keyboard([[BAR_SPECIAL, BAR_MAIN, BAR_CLASSIC], [BACK]])
+        Markup.keyboard([[BAR_SPECIAL, BAR_MAIN], [BACK]])
           .resize()
           .oneTime(),
       );
@@ -86,7 +98,7 @@ async function handleMenuSelection(ctx: BotContext) {
         dir,
         'Фотографии раздела Special не найдены.',
         'Special. Для возврата выберите другой раздел или нажмите "Назад".',
-        [[BAR_SPECIAL, BAR_MAIN, BAR_CLASSIC], [BACK]],
+        [[BAR_SPECIAL, BAR_MAIN], [BACK]],
       );
     } else if (text === BAR_MAIN) {
       const dir = path.join(__dirname, '../../assets/bar/main');
@@ -95,16 +107,7 @@ async function handleMenuSelection(ctx: BotContext) {
         dir,
         'Фотографии раздела Основное не найдены.',
         'Основное. Для возврата выберите другой раздел или нажмите "Назад".',
-        [[BAR_SPECIAL, BAR_MAIN, BAR_CLASSIC], [BACK]],
-      );
-    } else if (text === BAR_CLASSIC) {
-      const dir = path.join(__dirname, '../../assets/bar/classic');
-      await sendImages(
-        ctx,
-        dir,
-        'Фотографии раздела Классика не найдены.',
-        'Классика. Для возврата выберите другой раздел или нажмите "Назад".',
-        [[BAR_SPECIAL, BAR_MAIN, BAR_CLASSIC], [BACK]],
+        [[BAR_SPECIAL, BAR_MAIN], [BACK]],
       );
     } else if (text === BACK) {
       // Если мы находимся на первом шаге (выбор меню) — выходим в главное меню
