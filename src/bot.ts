@@ -45,6 +45,16 @@ async function startBot() {
 // Start the bot
 startBot();
 
+// Global error handler: ignore expired callback query errors (400)
+bot.catch((err: any, ctx) => {
+  const code = err?.response?.error_code;
+  const description: string | undefined = err?.response?.description;
+  if (code === 400 && typeof description === 'string' && description.includes('query is too old')) {
+    return; // ignore silently
+  }
+  console.error('Unhandled error while processing', ctx?.update, err);
+});
+
 process.once('SIGINT', () => {
   bot.stop('SIGINT');
   server.close();

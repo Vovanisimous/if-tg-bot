@@ -10,26 +10,35 @@ bot.start(async (ctx) => {
     : null;
   const now = new Date().toISOString();
 
+  console.log('telegramId', telegramId);
+
   if (telegramId) {
-    await supabase.from('visitors').upsert(
-      [
-        {
-          id: telegramId,
-          username,
-          name,
-          creation_date: now,
-          last_visit_date: now,
-        },
-      ],
-      { onConflict: 'id', ignoreDuplicates: false },
-    );
-    // If record exists, only last_visit_date will be updated
-    await supabase.from('visitors').update({ last_visit_date: now }).eq('id', telegramId);
+    const { data: existingVisitor, error: fetchError } = await supabase
+      .from('visitors')
+      .select('id')
+      .eq('id', telegramId)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Failed to fetch visitor', fetchError);
+    }
+
+    if (existingVisitor) {
+      await supabase.from('visitors').update({ last_visit_date: now }).eq('id', telegramId);
+    } else {
+      await supabase.from('visitors').insert({
+        id: telegramId,
+        username,
+        name,
+        creation_date: now,
+        last_visit_date: now,
+      });
+    }
   }
 
   ctx.reply(
     `Привет, ${ctx.from?.first_name}, я бот бара If you know!
-    Чем могу помочь?
+Чем могу помочь?
     `,
     {
       reply_markup: {

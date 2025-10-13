@@ -11,15 +11,102 @@ import { supabase } from '../supabaseClient';
 
 const CANCEL_BOOKING = 'Отменить бронирование';
 
+const MAX_GUESTS = 8;
+
+type BookingWizardState = {
+  date?: string;
+  time?: string;
+  guests?: string;
+  phone?: string;
+  real_name?: string;
+};
+
+type ActiveBookingRecord = {
+  id: number;
+  date: string;
+  visitors_count: number;
+};
+
+const createMainMenuKeyboard = () =>
+  Markup.keyboard([[BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES]]).resize();
+
+const createCancelKeyboard = () =>
+  Markup.keyboard([[CANCEL_BOOKING]])
+    .resize()
+    .oneTime();
+
+const createPhoneRequestKeyboard = () =>
+  Markup.keyboard([[Markup.button.contactRequest('Отправить номер телефона')], [CANCEL_BOOKING]])
+    .resize()
+    .oneTime();
+
+function getWizardState(ctx: BotContext): BookingWizardState {
+  return ctx.wizard.state as BookingWizardState;
+}
+
+function formatBookingDateTime(isoDate: string) {
+  const bookingDate = new Date(isoDate);
+  return {
+    date: bookingDate.toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+    }),
+    time: bookingDate.toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }),
+  };
+}
+
+function buildInlineButtons(
+  values: string[],
+  prefix: string,
+): ReturnType<typeof Markup.button.callback>[] {
+  return values.map((value) => Markup.button.callback(value, `${prefix}:${value}`));
+}
+
+async function fetchLatestActiveBooking(userId: number): Promise<ActiveBookingRecord | null> {
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('id, date, visitors_count')
+    .eq('userid', userId)
+    .in('status', ['active', 'confirmed'])
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Failed to fetch latest active booking', { userId, error });
+    return null;
+  }
+
+  return data ?? null;
+}
+
+async function safeAnswerCbQuery(ctx: BotContext, text?: string) {
+  try {
+    // Answer callback queries, but ignore cases where the query is too old/invalid
+    await ctx.answerCbQuery(text);
+  } catch (error: any) {
+    if (
+      error?.response?.error_code === 400 &&
+      typeof error?.response?.description === 'string' &&
+      error.response.description.includes('query is too old')
+    ) {
+      return; // ignore expired callback query errors
+    }
+    // Re-throw other errors so they are not silenced accidentally
+    throw error;
+  }
+}
+
 function isCancel(ctx: BotContext) {
   return ctx.message && 'text' in ctx.message && ctx.message.text === CANCEL_BOOKING;
 }
 
 async function cancelBooking(ctx: BotContext) {
-  await ctx.reply(
-    'Бронирование отменено.',
-    Markup.keyboard([[BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES]]).resize(),
-  );
+  await ctx.reply('Бронирование отменено.', createMainMenuKeyboard());
   return ctx.scene.leave();
 }
 
@@ -31,56 +118,29 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
   async (ctx) => {
     const userId = ctx.from?.id;
     if (userId) {
-      const { data } = await supabase
-        .from('bookings')
-        .select('id, date, visitors_count, status')
-        .eq('userid', userId)
-        .in('status', ['active', 'confirmed'])
-        .order('date', { ascending: false })
-        .limit(1)
-        .single();
-      if (data && data.date && data.visitors_count) {
-        const bookingDate = new Date(data.date);
-        const dateStr = bookingDate.toLocaleDateString('ru-RU', {
-          day: '2-digit',
-          month: '2-digit',
-        });
-        const timeStr = bookingDate.toLocaleTimeString('ru-RU', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        });
+      const existingBooking = await fetchLatestActiveBooking(userId);
+      if (existingBooking?.date && existingBooking.visitors_count) {
+        const { date, time } = formatBookingDateTime(existingBooking.date);
         await ctx.reply(
-          `У вас есть бронь на ${dateStr} в ${timeStr} на ${data.visitors_count} гостей`,
+          `У вас есть бронь на ${date} в ${time} на ${existingBooking.visitors_count} гостей`,
           Markup.inlineKeyboard([
-            [Markup.button.callback('Отменить бронь', `cancel_booking:${data.id}`)],
+            [Markup.button.callback('Отменить бронь', `cancel_booking:${existingBooking.id}`)],
           ]),
         );
-        // Добавляем кнопку для возврата в главное меню
         await ctx.reply(
           'Для создания новой брони сначала отмените текущую или вернитесь в главное меню.',
-          Markup.keyboard([[BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES]]).resize(),
+          createMainMenuKeyboard(),
         );
         return;
       }
     }
     const dates = getNextBookingDates();
-    const inline_keyboard = [];
-    for (let i = 0; i < dates.length; i += 2) {
-      const row = [Markup.button.callback(dates[i], `date:${dates[i]}`)];
-      if (dates[i + 1]) row.push(Markup.button.callback(dates[i + 1], `date:${dates[i + 1]}`));
-      inline_keyboard.push(row);
-    }
+    const dateButtons = buildInlineButtons(dates, 'date');
     await ctx.reply(
       'Отлично! Выберите, пожалуйста, дату, когда вы хотите нас посетить',
-      Markup.inlineKeyboard(inline_keyboard),
+      Markup.inlineKeyboard(dateButtons, { columns: 2 }),
     );
-    await ctx.reply(
-      'Для отмены бронирования используйте кнопку ниже.',
-      Markup.keyboard([[CANCEL_BOOKING]])
-        .resize()
-        .oneTime(),
-    );
+    await ctx.reply('Для отмены бронирования используйте кнопку ниже.', createCancelKeyboard());
     return ctx.wizard.next();
   },
   // Step 2: Date
@@ -88,20 +148,17 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
     if (isCancel(ctx)) {
       return cancelBooking(ctx);
     }
-    const callbackQuery = ctx.callbackQuery as { data?: string };
+    const callbackQuery = ctx.callbackQuery as { data?: string } | undefined;
     if (callbackQuery?.data && callbackQuery.data.startsWith('date:')) {
       const chosenDate = callbackQuery.data.substring(5);
-      (ctx.wizard.state as any).date = chosenDate;
+      const wizardState = getWizardState(ctx);
+      wizardState.date = chosenDate;
       const times = getBookingTimes(chosenDate);
-      const inline_keyboard = [];
-      for (let i = 0; i < times.length; i += 4) {
-        const row = times.slice(i, i + 4).map((t) => Markup.button.callback(t, `time:${t}`));
-        inline_keyboard.push(row);
-      }
-      await ctx.answerCbQuery();
+      await safeAnswerCbQuery(ctx);
+      const timeButtons = buildInlineButtons(times, 'time');
       await ctx.reply(
         `Вы выбрали дату: ${chosenDate}. Теперь выберите время:`,
-        Markup.inlineKeyboard(inline_keyboard),
+        Markup.inlineKeyboard(timeButtons, { columns: 4 }),
       );
       return ctx.wizard.next();
     } else {
@@ -113,7 +170,7 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
     if (isCancel(ctx)) {
       return cancelBooking(ctx);
     }
-    const callbackQuery = ctx.callbackQuery as { data?: string };
+    const callbackQuery = ctx.callbackQuery as { data?: string } | undefined;
     if (callbackQuery?.data && callbackQuery.data.startsWith('time:')) {
       let chosenTime = callbackQuery.data.substring(5);
       if (/^\d{1,2}$/.test(chosenTime)) {
@@ -122,18 +179,15 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
         const [h, m] = chosenTime.split(':');
         chosenTime = h.padStart(2, '0') + ':' + m.padStart(2, '0');
       }
-      (ctx.wizard.state as any).time = chosenTime;
-      const chosenDate = (ctx.wizard.state as any).date;
-      const numbers = Array.from({ length: 8 }, (_, i) => (i + 1).toString());
-      const inline_keyboard = [];
-      for (let i = 0; i < numbers.length; i += 4) {
-        const row = numbers.slice(i, i + 4).map((n) => Markup.button.callback(n, `guests:${n}`));
-        inline_keyboard.push(row);
-      }
-      await ctx.answerCbQuery();
+      const wizardState = getWizardState(ctx);
+      wizardState.time = chosenTime;
+      const chosenDate = wizardState.date;
+      const guests = Array.from({ length: MAX_GUESTS }, (_, i) => (i + 1).toString());
+      await safeAnswerCbQuery(ctx);
+      const guestsButtons = buildInlineButtons(guests, 'guests');
       await ctx.reply(
-        `Вы выбрали: ${chosenDate} в ${chosenTime}. Теперь выберите количество гостей (от 1 до 8):`,
-        Markup.inlineKeyboard(inline_keyboard),
+        `Вы выбрали: ${chosenDate} в ${chosenTime}. Теперь выберите количество гостей (от 1 до ${MAX_GUESTS}):`,
+        Markup.inlineKeyboard(guestsButtons, { columns: 4 }),
       );
       return ctx.wizard.next();
     } else {
@@ -145,20 +199,14 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
     if (isCancel(ctx)) {
       return cancelBooking(ctx);
     }
-    const callbackQuery = ctx.callbackQuery as { data?: string };
+    const callbackQuery = ctx.callbackQuery as { data?: string } | undefined;
     if (callbackQuery?.data && callbackQuery.data.startsWith('guests:')) {
-      (ctx.wizard.state as any).guests = callbackQuery.data.substring(7);
-      await ctx.answerCbQuery();
+      const wizardState = getWizardState(ctx);
+      wizardState.guests = callbackQuery.data.substring(7);
+      await safeAnswerCbQuery(ctx);
       await ctx.reply(
-        `Вы выбрали: ${(ctx.wizard.state as any).date} в ${(ctx.wizard.state as any).time} для ${
-          (ctx.wizard.state as any).guests
-        } гостей. Теперь отправьте свой номер телефона для бронирования.`,
-        Markup.keyboard([
-          [Markup.button.contactRequest('Отправить номер телефона')],
-          [CANCEL_BOOKING],
-        ])
-          .resize()
-          .oneTime(),
+        `Вы выбрали: ${wizardState.date} в ${wizardState.time} для ${wizardState.guests} гостей. Теперь отправьте свой номер телефона для бронирования.`,
+        createPhoneRequestKeyboard(),
       );
       return ctx.wizard.next();
     } else {
@@ -182,23 +230,17 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
     }
     if (phone && isValidRussianPhoneNumber(phone)) {
       const formattedPhone = formatRussianPhoneNumber(phone);
-      (ctx.wizard.state as any).phone = formattedPhone;
+      const wizardState = getWizardState(ctx);
+      wizardState.phone = formattedPhone;
       await ctx.reply(
         'Как к вам обращаться? Введите ваше имя кириллицей (2–40 символов).',
-        Markup.keyboard([[CANCEL_BOOKING]])
-          .resize()
-          .oneTime(),
+        createCancelKeyboard(),
       );
       return ctx.wizard.next();
     } else {
       await ctx.reply(
         'Неправильно набран номер телефона попробуйте еще раз',
-        Markup.keyboard([
-          [Markup.button.contactRequest('Отправить номер телефона')],
-          [CANCEL_BOOKING],
-        ])
-          .resize()
-          .oneTime(),
+        createPhoneRequestKeyboard(),
       );
     }
   },
@@ -212,22 +254,41 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
       if (!isValidRussianHumanName(enteredName)) {
         await ctx.reply(
           'Пожалуйста, введите корректное имя кириллицей (2–40 символов).',
-          Markup.keyboard([[CANCEL_BOOKING]])
-            .resize()
-            .oneTime(),
+          createCancelKeyboard(),
         );
         return; // stay on the same step
       }
-      (ctx.wizard.state as any).real_name = enteredName;
+      const wizardState = getWizardState(ctx);
+      wizardState.real_name = enteredName;
       // Persist real_name to visitors
       if (ctx.from?.id) {
-        await supabase.from('visitors').update({ real_name: enteredName }).eq('id', ctx.from.id);
+        const { error: visitorUpdateError } = await supabase
+          .from('visitors')
+          .update({ real_name: enteredName })
+          .eq('id', ctx.from.id);
+        if (visitorUpdateError) {
+          console.error('Failed to update visitor name', {
+            visitorId: ctx.from.id,
+            visitorUpdateError,
+          });
+        }
       }
       // Save booking to DB
-      const { date, time, guests, phone } = ctx.wizard.state as any;
+      const { date, time, guests, phone } = wizardState;
+      if (!date || !time || !guests || !phone) {
+        console.error('Wizard state is incomplete on booking finalize', {
+          userId: ctx.from?.id,
+          wizardState,
+        });
+        await ctx.reply(
+          'Не удалось сохранить бронь из-за неполных данных. Пожалуйста, попробуйте начать заново.',
+          createMainMenuKeyboard(),
+        );
+        return ctx.scene.leave();
+      }
       const bookingDate = combineDateAndTimeToISO(date, time);
       if (ctx.from) {
-        await supabase.from('bookings').insert([
+        const { error: bookingInsertError } = await supabase.from('bookings').insert([
           {
             userid: ctx.from.id,
             date: bookingDate,
@@ -235,6 +296,17 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
             phone,
           },
         ]);
+        if (bookingInsertError) {
+          console.error('Failed to create booking', {
+            userid: ctx.from.id,
+            bookingInsertError,
+          });
+          await ctx.reply(
+            'Не удалось сохранить бронь. Пожалуйста, попробуйте позже.',
+            createMainMenuKeyboard(),
+          );
+          return ctx.scene.leave();
+        }
       }
       const nameSuffix = enteredName ? `, ${enteredName}` : '';
       await ctx.reply(
@@ -249,23 +321,18 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
 Пунктуальность — часть ритуала. Мы будем ждать.
 
 До скорой встречи в If You Know.`,
-        Markup.keyboard([[BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES]]).resize(),
+        createMainMenuKeyboard(),
       );
       return ctx.scene.leave();
     } else {
-      await ctx.reply(
-        'Пожалуйста, отправьте текстовое имя кириллицей.',
-        Markup.keyboard([[CANCEL_BOOKING]])
-          .resize()
-          .oneTime(),
-      );
+      await ctx.reply('Пожалуйста, отправьте текстовое имя кириллицей.', createCancelKeyboard());
     }
   },
 );
 
 // Handle cancel booking callback
 bookingScene.action(/cancel_booking:(\d+)/, async (ctx) => {
-  await ctx.answerCbQuery();
+  await safeAnswerCbQuery(ctx);
   const bookingIdParam = ctx.match[1];
   const bookingId = Number(bookingIdParam);
   try {
@@ -274,7 +341,7 @@ bookingScene.action(/cancel_booking:(\d+)/, async (ctx) => {
     await ctx.reply('Бронь отменена');
     await ctx.reply(
       'Теперь вы можете создать новую бронь или выбрать другие опции.',
-      Markup.keyboard([[BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES]]).resize(),
+      createMainMenuKeyboard(),
     );
   } catch (error) {
     console.error('Failed to cancel booking', { bookingId, error });
