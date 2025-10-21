@@ -281,7 +281,7 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
           wizardState,
         });
         await ctx.reply(
-          'Не удалось сохранить бронь из-за неполных данных. Пожалуйста, попробуйте начать заново.',
+          'Не удалось сохранить бронь из-за неполных данных. Пожалуйста, попробуйте начать заново или свяжитесь с нами по номеру телефона +79677575910',
           createMainMenuKeyboard(),
         );
         return ctx.scene.leave();
@@ -302,7 +302,7 @@ const bookingScene = new Scenes.WizardScene<BotContext>(
             bookingInsertError,
           });
           await ctx.reply(
-            'Не удалось сохранить бронь. Пожалуйста, попробуйте позже.',
+            'Не удалось сохранить бронь. Пожалуйста, попробуйте позже или свяжитесь с нами по номеру телефона +79677575910',
             createMainMenuKeyboard(),
           );
           return ctx.scene.leave();
@@ -345,7 +345,9 @@ bookingScene.action(/cancel_booking:(\d+)/, async (ctx) => {
     );
   } catch (error) {
     console.error('Failed to cancel booking', { bookingId, error });
-    await ctx.reply('Не удалось отменить бронь. Пожалуйста, попробуйте позже.');
+    await ctx.reply(
+      'Не удалось отменить бронь. Пожалуйста, попробуйте позже или свяжитесь с нами по номеру телефона +79677575910',
+    );
   }
   return ctx.scene.leave();
 });
