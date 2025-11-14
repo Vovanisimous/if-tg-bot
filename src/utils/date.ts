@@ -65,9 +65,37 @@ export function combineDateAndTimeToISO(dateStr: string, timeStr: string): strin
   const [hour, minute] = timeStr.split(':').map(Number);
   const now = new Date();
   let year = now.getFullYear();
-  let bookingDate = new Date(year, month - 1, day, hour, minute);
-  if (bookingDate < now) {
-    bookingDate = new Date(year + 1, month - 1, day, hour, minute);
+
+  // Если время после полуночи (00:00-02:59), это бронь на следующий день
+  // Нужно добавить день к базовой дате
+  let adjustedDay = day;
+  let adjustedMonth = month;
+  let adjustedYear = year;
+
+  if (hour < 3) {
+    // Создаем временную дату для корректного добавления дня
+    const tempDate = new Date(year, month - 1, day);
+    tempDate.setDate(tempDate.getDate() + 1);
+    adjustedDay = tempDate.getDate();
+    adjustedMonth = tempDate.getMonth() + 1;
+    adjustedYear = tempDate.getFullYear();
   }
+
+  let bookingDate = new Date(adjustedYear, adjustedMonth - 1, adjustedDay, hour, minute);
+
+  // Если полученная дата в прошлом, берем следующий год
+  // Добавляем буфер в 1 час, чтобы избежать проблем с только что прошедшим временем
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+  if (bookingDate < oneHourAgo) {
+    bookingDate = new Date(adjustedYear + 1, adjustedMonth - 1, adjustedDay, hour, minute);
+  }
+
+  // Защита от бронирования более чем на год вперед
+  const oneYearFromNow = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+  if (bookingDate > oneYearFromNow) {
+    // Если дата более чем через год, используем текущий год
+    bookingDate = new Date(year, adjustedMonth - 1, adjustedDay, hour, minute);
+  }
+
   return bookingDate.toISOString();
 }
