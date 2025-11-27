@@ -73,6 +73,9 @@ bot.start(async (ctx) => {
           reply_markup: {
             inline_keyboard: [[{ text: '✅ Согласен', callback_data: 'accept_privacy_policy' }]],
           },
+          link_preview_options: {
+            is_disabled: true,
+          },
         },
       );
     }
