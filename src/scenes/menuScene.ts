@@ -7,7 +7,6 @@ import { BUTTON_BOOKING, BUTTON_MENU, BUTTON_RULES } from '../constants';
 const KITCHEN = 'Кухня';
 const BAR = 'Бар';
 const BACK = 'Назад';
-const BAR_SPECIAL = 'Special';
 const BAR_MAIN = 'Основное';
 
 async function sendImages(
@@ -86,20 +85,11 @@ async function handleMenuSelection(ctx: BotContext) {
     } else if (text === BAR) {
       await ctx.reply(
         'Выберите раздел бара:',
-        Markup.keyboard([[BAR_SPECIAL, BAR_MAIN], [BACK]])
+        Markup.keyboard([[BAR_MAIN], [BACK]])
           .resize()
           .oneTime(),
       );
       return;
-    } else if (text === BAR_SPECIAL) {
-      const dir = path.join(__dirname, '../../assets/bar/special');
-      await sendImages(
-        ctx,
-        dir,
-        'Фотографии раздела Special не найдены.',
-        'Special. Для возврата выберите другой раздел или нажмите "Назад".',
-        [[BAR_SPECIAL, BAR_MAIN], [BACK]],
-      );
     } else if (text === BAR_MAIN) {
       const dir = path.join(__dirname, '../../assets/bar/main');
       await sendImages(
@@ -107,7 +97,7 @@ async function handleMenuSelection(ctx: BotContext) {
         dir,
         'Фотографии раздела Основное не найдены.',
         'Основное. Для возврата выберите другой раздел или нажмите "Назад".',
-        [[BAR_SPECIAL, BAR_MAIN], [BACK]],
+        [[BAR_MAIN], [BACK]],
       );
     } else if (text === BACK) {
       // Если мы находимся на первом шаге (выбор меню) — выходим в главное меню
